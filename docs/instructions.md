@@ -330,20 +330,14 @@ ip route
 `client1`:
 
 ```bash
-command -v curl >/dev/null || apk add --no-cache curl
 curl -s http://172.31.0.2 >/dev/null && echo client1_ok
 ```
 
 `client2`:
 
 ```bash
-command -v curl >/dev/null || apk add --no-cache curl
 curl -s http://172.31.0.2 >/dev/null && echo client2_ok
 ```
-
-注記:
-- `curl` が未導入のときだけ `apk add --no-cache curl` が実行されます。
-- 初回のみ導入で少し時間がかかる場合があります。
 
 実行結果サンプル（抜粋）:
 
@@ -455,14 +449,12 @@ conntrack v1.4.8 (conntrack-tools): 0 flow entries have been shown.
 `client1`:
 
 ```bash
-command -v curl >/dev/null || apk add --no-cache curl
 curl -s http://172.31.0.2 >/dev/null && echo client1_reconnect_ok
 ```
 
 `client2`:
 
 ```bash
-command -v curl >/dev/null || apk add --no-cache curl
 curl -s http://172.31.0.2 >/dev/null && echo client2_reconnect_ok
 ```
 
