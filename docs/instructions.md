@@ -418,12 +418,49 @@ tcp ... src=192.168.10.3 dst=172.31.0.2 sport=<c2_port> dport=80 ...
 - Step1 で `MASQUERADE/FORWARD` 設定済みであること
 - Step2 で `client1` / `client2` の通信が成功していること
 
-### 3. router で conntrack を確認して Flush
+### 3. Flush前のエントリを作成して確認
 
-router シェルで実行します。
+まず `client1` / `client2` から通信を発生させ、Flush前にエントリがある状態を作ります。
+
+`client1`:
+
+```bash
+curl -s http://172.31.0.2 >/dev/null && echo client1_prewarm_ok
+```
+
+`client2`:
+
+```bash
+curl -s http://172.31.0.2 >/dev/null && echo client2_prewarm_ok
+```
+
+続けて `router` シェルで確認します。
 
 ```bash
 conntrack -L
+```
+
+実行結果サンプル（抜粋）:
+
+```text
+client1_prewarm_ok
+client2_prewarm_ok
+tcp ... src=192.168.10.2 dst=172.31.0.2 ...
+tcp ... src=192.168.10.3 dst=172.31.0.2 ...
+... dst=172.31.0.1 ...   # または reply_dst=172.31.0.1 系
+```
+
+判定ポイント
+
+- `client1_prewarm_ok` / `client2_prewarm_ok` が出る
+- `conntrack` に `src=192.168.10.2` と `src=192.168.10.3` が見える
+- `dst=172.31.0.2 dport=80`（変換前）と `dst=172.31.0.1` または `reply_dst=...`（変換後）が見える
+
+### 4. conntrack を Flush
+
+`router` シェルで実行します。
+
+```bash
 conntrack -F
 conntrack -L
 ```
@@ -431,20 +468,14 @@ conntrack -L
 実行結果サンプル（抜粋）:
 
 ```text
-# Flush前
-tcp ... src=192.168.10.2 dst=172.31.0.2 ...
-tcp ... src=192.168.10.3 dst=172.31.0.2 ...
-
-# conntrack -F 実行後
 conntrack v1.4.8 (conntrack-tools): 0 flow entries have been shown.
 ```
 
 判定ポイント
 
-- Flush前にエントリがある
 - Flush後に対象エントリが減る/消える
 
-### 4. client1 / client2 から再通信
+### 5. client1 / client2 から再通信
 
 `client1`:
 
@@ -465,7 +496,7 @@ client1_reconnect_ok
 client2_reconnect_ok
 ```
 
-### 5. router で conntrack 再生成を確認
+### 6. router で conntrack 再生成を確認
 
 ```bash
 conntrack -L
@@ -485,22 +516,24 @@ tcp ... src=192.168.10.3 dst=172.31.0.2 sport=<c2_port> dport=80 ...
 ... dst=172.31.0.1 ...   # または reply_dst=172.31.0.1 系
 ```
 
-### 6. Step3 の成功判定
+### 7. Step3 の成功判定
 
+- Flush前に `src=192.168.10.2` / `src=192.168.10.3` のエントリが存在する
 - Flush後に一度エントリが減る/消える
 - 再通信後に `src=192.168.10.2` と `src=192.168.10.3` のエントリが再生成される
 - `dst=172.31.0.2 dport=80`（変換前）と `dst=172.31.0.1` または `reply_dst=...`（変換後）が再び観察できる
 
-### 7. なぜそうなるか
+### 8. なぜそうなるか
 
 - NAT 変換ルール（`MASQUERADE/FORWARD`）は `iptables` に残っているため有効です。
 - ただし、どの通信をどこへ戻すかの状態は `conntrack` が保持しています。
 - `conntrack -F` で既存状態を消すと、進行中セッションは切れたり再接続になったりします。
 - 新しく通信を送ると `conntrack` が状態を再学習し、エントリが再生成されます。
 
-### 8. 注意
+### 9. 注意
 
 - 出力の形式・件数・ポート番号は環境で変わります。値の一致ではなく構造で判定してください。
+- 短命なフローはすぐ消えることがあるため、通信直後に確認してください。
 - Flush により既存接続が切れる/再接続になることがあります。
 
 ## Step4: DNAT（挑戦）
