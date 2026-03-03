@@ -187,6 +187,61 @@ Step1.5 を実行する前後で、次の観点を比較すると判断しやす
 - `127.0.0.11` 向けの Docker DNS 通信や外部IP向け通信が混在していても問題ありません。
 - 判定は必ず「`192.168.10.2 -> 172.31.0.2:80` の通信が見えているか」で行ってください。
 
+### 8. NAPTでどのIP:Portがどこに配送されたかを確認
+
+このStep1で確認している変換は次のイメージです。
+
+- 送信元（LAN側・変換前）: `192.168.10.2:<client_ephemeral_port>`
+- 宛先（server）: `172.31.0.2:80`
+- 送信元（WAN側・変換後）: `172.31.0.1:<translated_port>`
+  `MASQUERADE` のため、送信元IPは `router` の WAN 側IPに変換されます。
+
+確認用に、`client` で `curl` の送信元ポートを表示します。
+
+```bash
+curl -s -o /dev/null -w 'client_local=%{local_ip}:%{local_port} -> server=%{remote_ip}:%{remote_port}\n' http://172.31.0.2
+```
+
+続けて `router` で同じフローを確認します。
+
+```bash
+conntrack -L | grep 'src=192.168.10.2' | grep 'dst=172.31.0.2' | grep 'dport=80'
+```
+
+`conntrack` の1行は、前半が「client -> server」、後半が「server -> router(WAN)」の対応を表します。
+以下は読み方の例です（ポート番号は毎回変わります）。
+
+```text
+tcp ... TIME_WAIT src=192.168.10.2 dst=172.31.0.2 sport=<client_port> dport=80 src=172.31.0.2 dst=172.31.0.1 sport=80 dport=<translated_port> [ASSURED] ...
+```
+
+具体値の例:
+
+```text
+tcp 6 112 TIME_WAIT src=192.168.10.2 dst=172.31.0.2 sport=38624 dport=80 src=172.31.0.2 dst=172.31.0.1 sport=80 dport=38624 [ASSURED] mark=0 use=1
+```
+
+- 前半（original方向）: `src=192.168.10.2:<client_port> -> dst=172.31.0.2:80`
+- 後半（reply方向）: `src=172.31.0.2:80 -> dst=172.31.0.1:<translated_port>`
+- `sport` / `dport` は送信元/宛先ポートです。
+- `TIME_WAIT` や `ESTABLISHED` はTCPの状態、`[ASSURED]` は双方向通信が成立した状態です。
+- `<client_port>` と `<translated_port>` は例です。実行ごとに別の値になります。
+
+なぜ戻り先が `router` の WAN 側になるのか:
+- `client -> server` の送信時、`router` は `MASQUERADE` により送信元を `172.31.0.1:<translated_port>` に変換します。
+- そのため `server` からは通信相手が `172.31.0.1:<translated_port>` に見えます。
+- `server` の返信先は見えている相手になるため、戻りパケットの宛先は `dst=172.31.0.1:<translated_port>` になります。
+- 受け取った `router` は `conntrack` の状態を使って逆変換し、`192.168.10.2:<client_port>` へ転送します。
+- 重要なのは後半の `dst` が `router` WAN 側IPになっている点です（ポート値自体は毎回変わります）。
+
+`conntrack` に対象フローが出て、`iptables -t nat -L -n -v` の `MASQUERADE` カウンタが増えていれば、NAPTによる配送が機能しています。
+
+やっていることのイメージ画像
+
+- [NAPT send](images/napt-send.png)
+- [NAPT reply](images/napt-reply.png)
+- [NAPT table](images/napt-table.png)
+
 ## Step2: 複数クライアント通信
 
 準備中。
