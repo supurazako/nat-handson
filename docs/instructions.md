@@ -280,6 +280,11 @@ tcp 6 112 TIME_WAIT src=192.168.10.2 dst=172.31.0.2 sport=38624 dport=80 src=172
 
 このStepでは `client1` と `client2` の両方から `server` に通信し、`router` で別々のフローとして追跡されることを確認します。
 
+前提
+
+- Step2 を単独で開始する場合でも、先に Step1-2（router の必要パッケージ導入）と Step1-4（MASQUERADE/FORWARD 設定）を実施してください。
+- これらが未実施だと、`client1` / `client2` からの通信が成立しません。
+
 ### 1. 起動状態を確認
 
 ```bash
