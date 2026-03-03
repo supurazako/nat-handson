@@ -129,6 +129,15 @@ ip route add default via 192.168.10.1 dev eth0
 ip route
 ```
 
+実行結果サンプル（抜粋）:
+
+```text
+default via 192.168.10.1 dev eth0
+192.168.10.0/24 dev eth0 scope link src 192.168.10.2
+```
+
+判定ポイント: `default via 192.168.10.1` になっていればOKです。
+
 ### 4. router で MASQUERADE と FORWARD を設定
 
 `router` シェルで LAN/WAN の IF 名を確認します。
@@ -161,6 +170,15 @@ curl http://172.31.0.2
 
 `Welcome to nginx!` のHTMLが返れば成功です。
 
+実行結果サンプル（抜粋）:
+
+```text
+<!DOCTYPE html>
+<title>Welcome to nginx!</title>
+```
+
+判定ポイント: `Welcome to nginx!` が含まれていればOKです。
+
 ### 6. router で conntrack と NAT テーブル確認
 
 `router` シェルで実行します。
@@ -172,6 +190,22 @@ iptables -L -n -v
 ```
 
 `conntrack` にフローが作成され、`POSTROUTING` と `FORWARD` のカウンタが増えていることを確認します。
+
+実行結果サンプル（抜粋）:
+
+```text
+tcp ... src=192.168.10.2 dst=172.31.0.2 sport=<client_port> dport=80 ...
+...
+POSTROUTING ...
+<N> <BYTES> MASQUERADE ... 192.168.10.0/24 ...
+FORWARD ...
+<N> <BYTES> ACCEPT ... eth0 eth1 ...
+```
+
+判定ポイント:
+- `conntrack` に `src=192.168.10.2` と `dst=172.31.0.2 dport=80` を含む行がある
+- `MASQUERADE` / `FORWARD` の `pkts/bytes` が 0 より増えている  
+注記: `<client_port>` と `<N>` は実行ごとに変わります。
 
 ### 7. 成功判定（Before / After 比較）
 
@@ -291,6 +325,15 @@ docker compose exec client1 sh -c "apk add --no-cache curl && curl -s http://172
 docker compose exec client2 sh -c "apk add --no-cache curl && curl -s http://172.31.0.2 >/dev/null && echo client2_ok"
 ```
 
+実行結果サンプル（抜粋）:
+
+```text
+client1_ok
+client2_ok
+```
+
+判定ポイント: `client1_ok` と `client2_ok` の両方が表示されればOKです。
+
 ### 4. router で複数フローを観察
 
 ```bash
@@ -304,11 +347,27 @@ docker compose exec router iptables -L -n -v
 - `src=192.168.10.2 ... dst=172.31.0.2 dport=80`（client1）
 - `src=192.168.10.3 ... dst=172.31.0.2 dport=80`（client2）
 
+実行結果サンプル（抜粋）:
+
+```text
+tcp ... src=192.168.10.2 dst=172.31.0.2 sport=<c1_port> dport=80 ...
+tcp ... src=192.168.10.3 dst=172.31.0.2 sport=<c2_port> dport=80 ...
+...
+<N1> <BYTES1> MASQUERADE ... 192.168.10.0/24 ...
+<N2> <BYTES2> ACCEPT ... eth0 eth1 ...
+```
+
+判定ポイント:
+- `192.168.10.2` と `192.168.10.3` の両方のフローが見える
+- `MASQUERADE` / `FORWARD` のカウンタが増える  
+注記: `<c1_port>`, `<c2_port>`, `<N1>`, `<N2>` は実行ごとに変わります。
+
 ### 5. Step2 の成功判定
 
 - 2つの送信元IP（`192.168.10.2`, `192.168.10.3`）由来のエントリが `conntrack` に出る
 - `MASQUERADE` と `FORWARD` のカウンタが増える
 - 同じ宛先でも `src IP + src port` の組ごとに別セッションとして管理される
+- 上の「実行結果サンプル（抜粋）」と同じ観点を満たしていれば成功
 
 ## Step3: 状態破壊
 

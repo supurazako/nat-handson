@@ -46,6 +46,7 @@ docker compose exec router iptables -L -n -v
 `POSTROUTING MASQUERADE` と `FORWARD` 許可ルールが存在し、カウンタが増えること。
 `pkts/bytes` が増えていれば、該当ルールに実トラフィックが当たっています。
 読み方の補足は `docs/instructions.md` の「Step0: 詳細解説: iptables」を参照してください。
+実行結果サンプルは `docs/instructions.md` の「Step1: 6. router で conntrack と NAT テーブル確認」を参照してください。
 
 ## 6. conntrack エントリが作られているか
 
@@ -56,6 +57,7 @@ docker compose exec router conntrack -L
 `src=192.168.10.2` から `dst=172.31.0.2` へ向かうセッションが見えること。
 `src/dst/sport/dport` は通信の向きとポートを示します。
 読み方の補足は `docs/instructions.md` の「Step0: 詳細解説: conntrack」を参照してください。
+実行結果サンプルは `docs/instructions.md` の「Step1: 6. router で conntrack と NAT テーブル確認」を参照してください。
 
 未成功時/成功時の目安:
 - 未成功時: `conntrack` に `dst=172.31.0.2` が出ない、`MASQUERADE` と `FORWARD` カウンタが `0 0`
@@ -70,6 +72,7 @@ docker compose exec router conntrack -L | grep 'src=192.168.10.3'
 ```
 
 `client1`（`192.168.10.2`）と `client2`（`192.168.10.3`）の両方のエントリが見えること。
+実行結果サンプルは `docs/instructions.md` の「Step2: 4. router で複数フローを観察」を参照してください。
 
 ## 8. server 単体疎通を確認
 
