@@ -8,7 +8,7 @@
 docker compose ps
 ```
 
-`nat-client` / `nat-router` / `nat-server` が `Up` であること。
+`nat-client1` / `nat-client2` / `nat-router` / `nat-server` が `Up` であること。
 
 ## 2. router の IP forward が有効か
 
@@ -18,13 +18,14 @@ docker compose exec router sysctl net.ipv4.ip_forward
 
 `net.ipv4.ip_forward = 1` であること。
 
-## 3. client の経路が router を向いているか
+## 3. client1 / client2 の経路が router を向いているか
 
 ```bash
-docker compose exec client ip route
+docker compose exec client1 ip route
+docker compose exec client2 ip route
 ```
 
-`default via 192.168.10.1` になっていること。
+どちらも `default via 192.168.10.1` になっていること。
 
 ## 4. router の IF を取り違えていないか
 
@@ -61,7 +62,16 @@ docker compose exec router conntrack -L
 - 成功時: `dst=172.31.0.2` のセッションが出る、`MASQUERADE` と `FORWARD` カウンタが増える
 - 詳細比較は `docs/instructions.md` の「Step1: 7. 成功判定（Before / After 比較）」を参照
 
-## 7. server 単体疎通を確認
+## 7. 複数クライアント時の確認（Step2）
+
+```bash
+docker compose exec router conntrack -L | grep 'src=192.168.10.2'
+docker compose exec router conntrack -L | grep 'src=192.168.10.3'
+```
+
+`client1`（`192.168.10.2`）と `client2`（`192.168.10.3`）の両方のエントリが見えること。
+
+## 8. server 単体疎通を確認
 
 ```bash
 docker compose exec router wget -qO- http://172.31.0.2 | head -n 1
@@ -69,7 +79,7 @@ docker compose exec router wget -qO- http://172.31.0.2 | head -n 1
 
 router から server に届かなければ、WAN 側接続か server 側の起動状態を確認すること。
 
-## 8. Docker network のサブネット重複を確認（Compose側を変更）
+## 9. Docker network のサブネット重複を確認（Compose側を変更）
 
 `docker compose up -d` で以下のようなエラーが出る場合があります。  
 `invalid pool request: Pool overlaps with other one on this address space`
