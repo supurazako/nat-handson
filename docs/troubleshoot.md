@@ -111,3 +111,17 @@ docker network inspect $(docker network ls -q) --format '{{.Name}} {{range .IPAM
 docker compose down
 docker compose up -d
 ```
+
+## 10. Step4で復旧できない場合
+
+Step4（ルール削除）で復旧に失敗した場合は、環境を作り直します。
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+その後、Step1-2（router パッケージ導入）と Step1-4（MASQUERADE/FORWARD 設定）を再実行してください。
+
+注意:
+- `down -v` は状態を初期化するため、これまでの観察結果は消えます。

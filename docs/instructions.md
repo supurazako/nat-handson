@@ -536,6 +536,119 @@ tcp ... src=192.168.10.3 dst=172.31.0.2 sport=<c2_port> dport=80 ...
 - 短命なフローはすぐ消えることがあるため、通信直後に確認してください。
 - Flush により既存接続が切れる/再接続になることがあります。
 
-## Step4: DNAT（挑戦）
+## Step4: ルール削除（発展）
 
-準備中。
+### 1. 目的
+
+このStepのゴール:
+- NAT が成立するには、`conntrack` 状態だけでなく `iptables` の変換/転送ルールが必要だと体感する。
+
+### 2. 前提
+
+- Step1 の `MASQUERADE/FORWARD` 設定が完了していること
+- `client1` / `client2` から `server` への疎通ができていること
+
+### 3. 現状ルールを表示（保存用）
+
+`router` シェルで実行します。
+
+```bash
+ip addr
+iptables -t nat -S
+iptables -S
+```
+
+`192.168.10.1/24` が付いた IF を `LAN_IF`、`172.31.0.1/24` が付いた IF を `WAN_IF` として控えてください。
+
+### 4. 事前疎通確認
+
+`client1`:
+
+```bash
+curl -s http://172.31.0.2 >/dev/null && echo client1_precheck_ok
+```
+
+`client2`:
+
+```bash
+curl -s http://172.31.0.2 >/dev/null && echo client2_precheck_ok
+```
+
+### 5. ルール削除（router）
+
+`router` シェルで、以下3ルールを削除します。
+
+- `POSTROUTING` の `MASQUERADE`
+- `FORWARD` の `LAN -> WAN` 許可
+- `FORWARD` の `WAN -> LAN` `ESTABLISHED,RELATED` 許可
+
+削除例（`<LAN_IF>` / `<WAN_IF>` は自分の環境に合わせる）:
+
+```bash
+iptables -t nat -D POSTROUTING -s 192.168.10.0/24 -o <WAN_IF> -j MASQUERADE
+iptables -D FORWARD -i <LAN_IF> -o <WAN_IF> -j ACCEPT
+iptables -D FORWARD -i <WAN_IF> -o <LAN_IF> -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+```
+
+注意:
+- 環境差があるため、必ず `iptables -t nat -S` と `iptables -S` の出力を見て削除対象を確認してください。
+- 削除前に復旧コマンドを控えておいてください。
+
+### 6. 疎通失敗確認
+
+`client1`:
+
+```bash
+curl http://172.31.0.2
+```
+
+`client2`:
+
+```bash
+curl http://172.31.0.2
+```
+
+失敗（タイムアウトや接続エラー）することを確認します。
+
+### 7. ルール復旧（router）
+
+`router` シェルで、削除した3ルールを再追加します。
+
+```bash
+iptables -t nat -A POSTROUTING -s 192.168.10.0/24 -o <WAN_IF> -j MASQUERADE
+iptables -A FORWARD -i <LAN_IF> -o <WAN_IF> -j ACCEPT
+iptables -A FORWARD -i <WAN_IF> -o <LAN_IF> -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+```
+
+### 8. 疎通復旧確認
+
+`client1`:
+
+```bash
+curl -s http://172.31.0.2 >/dev/null && echo client1_restore_ok
+```
+
+`client2`:
+
+```bash
+curl -s http://172.31.0.2 >/dev/null && echo client2_restore_ok
+```
+
+### 9. Step4 の成功判定
+
+- 事前は疎通できる（`client1_precheck_ok`, `client2_precheck_ok`）
+- ルール削除後は疎通できない
+- ルール復旧後は疎通が戻る（`client1_restore_ok`, `client2_restore_ok`）
+- カウンタや出力値の一致ではなく、`可 -> 不可 -> 可` の遷移で判定する
+
+### 10. なぜそうなるか
+
+- `conntrack` は状態管理を行いますが、変換や転送の実処理は `iptables` ルールが担います。
+- ルールがない状態では、新規通信は変換/転送されず成立しません。
+- ルールを復旧すると、新規通信が再び成立します。
+
+### 11. 注意
+
+- IF名は決め打ちせず、`ip addr` で確認してください。
+- 出力やカウンタは環境で変わるため、値の一致ではなく構造で判定してください。
+- ルール削除前に復旧コマンドを必ず控えてください。
