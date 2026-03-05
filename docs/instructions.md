@@ -540,7 +540,8 @@ tcp ... src=192.168.10.3 dst=172.31.0.2 sport=<c2_port> dport=80 ...
 
 ### 1. 目的
 
-このStepのゴール:
+このStepのゴール
+
 - NAT が成立するには、`conntrack` 状態だけでなく `iptables` の変換/転送ルールが必要だと体感する。
 
 ### 2. 前提
@@ -565,13 +566,13 @@ iptables -S
 `client1`:
 
 ```bash
-curl -s http://172.31.0.2 >/dev/null && echo client1_precheck_ok
+curl http://172.31.0.2
 ```
 
 `client2`:
 
 ```bash
-curl -s http://172.31.0.2 >/dev/null && echo client2_precheck_ok
+curl http://172.31.0.2
 ```
 
 ### 5. ルール削除（router）
@@ -659,14 +660,6 @@ iptables -t nat -S
 iptables -S
 ```
 
-必要に応じて不足ルールを再追加してください。
-
-```bash
-iptables -t nat -A POSTROUTING -s 192.168.10.0/24 -o <WAN_IF> -j MASQUERADE
-iptables -A FORWARD -i <LAN_IF> -o <WAN_IF> -j ACCEPT
-iptables -A FORWARD -i <WAN_IF> -o <LAN_IF> -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-```
-
 最後に policy を通常運用（このハンズオンでは `ACCEPT`）へ戻します。
 
 ```bash
@@ -678,21 +671,21 @@ iptables -P FORWARD ACCEPT
 `client1`:
 
 ```bash
-curl -s http://172.31.0.2 >/dev/null && echo client1_restore_ok
+curl http://172.31.0.2
 ```
 
 `client2`:
 
 ```bash
-curl -s http://172.31.0.2 >/dev/null && echo client2_restore_ok
+curl http://172.31.0.2
 ```
 
 ### 10. Step4 の成功判定
 
-- 事前は疎通できる（`client1_precheck_ok`, `client2_precheck_ok`）
+- 事前は疎通できる
 - ルール削除後は疎通できない
-- 最小復旧で疎通が戻る（`client1_min_restore_ok`, `client2_min_restore_ok`）
-- 通常形へ戻した後も疎通できる（`client1_restore_ok`, `client2_restore_ok`）
+- 最小復旧で疎通が戻る
+- 通常形へ戻した後も疎通できる
 - カウンタや出力値の一致ではなく、`可 -> 不可 -> 段階復旧 -> 可` の遷移で判定する
 
 ### 11. なぜそうなるか
