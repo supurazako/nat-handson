@@ -585,14 +585,23 @@ curl -s http://172.31.0.2 >/dev/null && echo client2_precheck_ok
 削除例（`<LAN_IF>` / `<WAN_IF>` は自分の環境に合わせる）:
 
 ```bash
+iptables -P FORWARD DROP
 iptables -t nat -D POSTROUTING -s 192.168.10.0/24 -o <WAN_IF> -j MASQUERADE
 iptables -D FORWARD -i <LAN_IF> -o <WAN_IF> -j ACCEPT
 iptables -D FORWARD -i <WAN_IF> -o <LAN_IF> -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 ```
 
-注意:
+注意
+
 - 環境差があるため、必ず `iptables -t nat -S` と `iptables -S` の出力を見て削除対象を確認してください。
 - 削除前に復旧コマンドを控えておいてください。
+- 再現性確保のため、このStepでは一時的に `FORWARD` policy を `DROP` にしています。
+
+補足: `FORWARD DROP` は実運用でも一般的
+
+- 実運用では `FORWARD` を `DROP`（default deny）にし、必要な通信だけ明示許可する構成が一般的です。
+- このStepで `DROP` を使うのは、再現性確保に加えて実運用に近い考え方を体験するためです。
+- この資料ではハンズオン継続のしやすさを優先し、最後に `FORWARD ACCEPT` へ戻しています。
 
 ### 6. 疎通失敗確認
 
@@ -610,9 +619,45 @@ curl http://172.31.0.2
 
 失敗（タイムアウトや接続エラー）することを確認します。
 
-### 7. ルール復旧（router）
+### 7. 最小復旧（必要通信だけ許可）
 
-`router` シェルで、削除した3ルールを再追加します。
+`router` シェルで、`FORWARD DROP` のまま最小構成で復旧を進めます。
+
+```bash
+# 1) 戻り通信だけ許可
+iptables -A FORWARD -i <WAN_IF> -o <LAN_IF> -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# 2) LAN -> WAN の新規通信を許可
+iptables -A FORWARD -i <LAN_IF> -o <WAN_IF> -j ACCEPT
+
+# 3) NAT 変換を復旧
+iptables -t nat -A POSTROUTING -s 192.168.10.0/24 -o <WAN_IF> -j MASQUERADE
+```
+
+確認:
+
+`client1`:
+
+```bash
+curl -s http://172.31.0.2 >/dev/null && echo client1_min_restore_ok
+```
+
+`client2`:
+
+```bash
+curl -s http://172.31.0.2 >/dev/null && echo client2_min_restore_ok
+```
+
+### 8. ルール復旧（通常形に戻す）
+
+`router` シェルで、ルール重複がないか確認します。
+
+```bash
+iptables -t nat -S
+iptables -S
+```
+
+必要に応じて不足ルールを再追加してください。
 
 ```bash
 iptables -t nat -A POSTROUTING -s 192.168.10.0/24 -o <WAN_IF> -j MASQUERADE
@@ -620,7 +665,13 @@ iptables -A FORWARD -i <LAN_IF> -o <WAN_IF> -j ACCEPT
 iptables -A FORWARD -i <WAN_IF> -o <LAN_IF> -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 ```
 
-### 8. 疎通復旧確認
+最後に policy を通常運用（このハンズオンでは `ACCEPT`）へ戻します。
+
+```bash
+iptables -P FORWARD ACCEPT
+```
+
+### 9. 疎通復旧確認
 
 `client1`:
 
@@ -634,21 +685,24 @@ curl -s http://172.31.0.2 >/dev/null && echo client1_restore_ok
 curl -s http://172.31.0.2 >/dev/null && echo client2_restore_ok
 ```
 
-### 9. Step4 の成功判定
+### 10. Step4 の成功判定
 
 - 事前は疎通できる（`client1_precheck_ok`, `client2_precheck_ok`）
 - ルール削除後は疎通できない
-- ルール復旧後は疎通が戻る（`client1_restore_ok`, `client2_restore_ok`）
-- カウンタや出力値の一致ではなく、`可 -> 不可 -> 可` の遷移で判定する
+- 最小復旧で疎通が戻る（`client1_min_restore_ok`, `client2_min_restore_ok`）
+- 通常形へ戻した後も疎通できる（`client1_restore_ok`, `client2_restore_ok`）
+- カウンタや出力値の一致ではなく、`可 -> 不可 -> 段階復旧 -> 可` の遷移で判定する
 
-### 10. なぜそうなるか
+### 11. なぜそうなるか
 
 - `conntrack` は状態管理を行いますが、変換や転送の実処理は `iptables` ルールが担います。
-- ルールがない状態では、新規通信は変換/転送されず成立しません。
-- ルールを復旧すると、新規通信が再び成立します。
+- `FORWARD DROP` では、必要通信を明示許可しない限り新規通信は通りません。
+- 戻り通信許可、LAN->WAN 許可、NAT 変換の3要素がそろって初めて通信が成立します。
 
-### 11. 注意
+### 12. 注意
 
 - IF名は決め打ちせず、`ip addr` で確認してください。
 - 出力やカウンタは環境で変わるため、値の一致ではなく構造で判定してください。
 - ルール削除前に復旧コマンドを必ず控えてください。
+- Step4 終了時は `iptables -P FORWARD ACCEPT` へ戻してください（戻し忘れ防止）。
+- 本番運用では `FORWARD DROP` を維持し、必要通信のみ許可する方針が一般的です。

@@ -116,6 +116,14 @@ docker compose up -d
 
 Step4（ルール削除）で復旧に失敗した場合は、環境を作り直します。
 
+まず `router` で以下を試してください。
+
+```bash
+docker compose exec router iptables -P FORWARD ACCEPT
+```
+
+`FORWARD ACCEPT` への復帰はハンズオン復旧用です。実運用では `FORWARD DROP` + 必要通信のみ許可が一般的です。
+
 ```bash
 docker compose down -v
 docker compose up -d
