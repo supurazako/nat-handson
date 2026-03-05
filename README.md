@@ -45,7 +45,8 @@ docker compose up -d
 - Step1: 基本NAPT
 - Step2: 複数クライアント通信
 - Step3: 状態破壊
-- Step4: DNAT（挑戦）
+- Step4: ルール削除（発展）
+- Step5: DNAT（発展）
 
 ## ゴール
 

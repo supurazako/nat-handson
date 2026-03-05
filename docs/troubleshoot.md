@@ -133,3 +133,72 @@ docker compose up -d
 
 注意:
 - `down -v` は状態を初期化するため、これまでの観察結果は消えます。
+
+## 11. Step5（DNAT）でうまくいかない場合
+
+### 11-1. DNATルールが存在するか
+
+```bash
+docker compose exec router iptables -t nat -S | grep -- '--dport 8080'
+```
+
+`PREROUTING ... --dport 8080 ... DNAT --to-destination 192.168.10.4:80` が見えること。
+
+### 11-2. wan-client から router:8080 へ到達できるか
+
+```bash
+docker compose exec wan-client curl -m 15 http://172.31.0.1:8080
+```
+
+### 11-2b. lan-web の route 変更で `Operation not permitted` が出る
+
+`lan-web` に `NET_ADMIN` が付いていない状態です。`docker-compose.yml` を反映して `lan-web` を再作成します。
+
+```bash
+docker compose up -d --force-recreate lan-web
+```
+
+再作成後、Step5 の `ip route del default` / `ip route add default via 192.168.10.1` を再実行します。
+
+### 11-3. conntrack でDNATフローが見えるか
+
+```bash
+docker compose exec router conntrack -L | grep 'dport=8080'
+docker compose exec router conntrack -L | grep '192.168.10.4'
+```
+
+### 11-4. `timeout` する / `UNREPLIED` が続く（DNAT重複）
+
+症状の例:
+- `curl -m 15 http://172.31.0.1:8080` が `Connection timed out`
+- `conntrack -L` に `SYN_SENT [UNREPLIED]` が残る
+
+まず `router` でDNATの重複有無を確認します。
+
+```bash
+docker compose exec router iptables -t nat -L PREROUTING -n --line-numbers
+```
+
+`dpt:8080 to:192.168.10.4:80` が複数本ある場合、1本になるまで削除します。
+
+```bash
+docker compose exec router iptables -t nat -D PREROUTING <line_number>
+```
+
+または（1回で1本削除）:
+
+```bash
+docker compose exec router iptables -t nat -D PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 192.168.10.4:80
+```
+
+削除後に再確認し、1本であることを確認します。
+
+```bash
+docker compose exec router iptables -t nat -L PREROUTING -n --line-numbers
+```
+
+その後 `wan-client` から再試行します。
+
+```bash
+docker compose exec wan-client curl -m 15 http://172.31.0.1:8080
+```

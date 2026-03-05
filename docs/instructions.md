@@ -200,10 +200,11 @@ FORWARD ...
 <N> <BYTES> ACCEPT ... eth0 eth1 ...
 ```
 
-判定ポイント:
+判定ポイント
+
 - `conntrack` に `src=192.168.10.2` と `dst=172.31.0.2 dport=80` を含む行がある
 - `conntrack` に `dst=172.31.0.1`（router WAN 側）または `reply_dst=172.31.0.1` 系の表示が見える
-- `MASQUERADE` / `FORWARD` の `pkts/bytes` が 0 より増えている  
+- `MASQUERADE` / `FORWARD` の `pkts/bytes` が 0 より増えている
 注記: `<client_port>` と `<N>` は実行ごとに変わります。
 
 ### 7. 成功判定（Before / After 比較）
@@ -216,7 +217,8 @@ Step1.5 を実行する前後で、次の観点を比較すると判断しやす
 | `iptables -t nat -L -n -v` | `POSTROUTING` の `MASQUERADE` が `0 0` のまま | `MASQUERADE` の `pkts/bytes` が 0 より大きい | NATルールに実トラフィックが当たったか |
 | `iptables -L -n -v` | `FORWARD` の2ルールが `0 0` のまま | `LAN->WAN` と `WAN->LAN (ESTABLISHED,RELATED)` のカウンタが増える | 転送の往復が成立しているか |
 
-補足:
+補足
+
 - `127.0.0.11` 向けの Docker DNS 通信や外部IP向け通信が混在していても問題ありません。
 - 判定は必ず「`192.168.10.2 -> 172.31.0.2:80` の通信が見えているか」で行ってください。
 
@@ -266,7 +268,8 @@ tcp 6 112 TIME_WAIT src=192.168.10.2 dst=172.31.0.2 sport=38624 dport=80 src=172
 - `TIME_WAIT` や `ESTABLISHED` はTCPの状態、`[ASSURED]` は双方向通信が成立した状態です。
 - `<client_port>` と `<translated_port>` は例です。実行ごとに別の値になります。
 
-なぜ戻り先が `router` の WAN 側になるのか:
+なぜ戻り先が `router` の WAN 側になるのか
+
 - `client1 -> server` の送信時、`router` は `MASQUERADE` により送信元を `172.31.0.1:<translated_port>` に変換します。
 - そのため `server` からは通信相手が `172.31.0.1:<translated_port>` に見えます。
 - `server` の返信先は見えている相手になるため、戻りパケットの宛先は `dst=172.31.0.1:<translated_port>` になります。
@@ -330,13 +333,13 @@ ip route
 `client1`:
 
 ```bash
-curl -s http://172.31.0.2 >/dev/null && echo client1_ok
+curl http://172.31.0.2
 ```
 
 `client2`:
 
 ```bash
-curl -s http://172.31.0.2 >/dev/null && echo client2_ok
+curl http://172.31.0.2
 ```
 
 実行結果サンプル（抜粋）:
@@ -346,7 +349,7 @@ client1_ok
 client2_ok
 ```
 
-判定ポイント: `client1_ok` と `client2_ok` の両方が表示されればOKです。
+判定ポイント: `client1` と `client2` の両方でhello nginxが表示されればOKです。
 
 ### 4. router で複数フローを観察
 
@@ -701,3 +704,131 @@ curl http://172.31.0.2
 - ルール削除前に復旧コマンドを必ず控えてください。
 - Step4 終了時は `iptables -P FORWARD ACCEPT` へ戻してください（戻し忘れ防止）。
 - 本番運用では `FORWARD DROP` を維持し、必要通信のみ許可する方針が一般的です。
+
+## Step5: DNAT（ポートフォワーディング）
+
+### 1. 目的
+
+このStepのゴール:
+- DNAT を使うと、外側から `router` の `IP:port` に来た通信を内部サーバへ転送できることを理解する。
+- `conntrack` が DNAT の状態も管理していることを観察する。
+
+### 2. 前提
+
+- Step1〜Step3 が完了していること
+- `router` に `MASQUERADE/FORWARD` 設定が存在すること
+- `lan-web` に `NET_ADMIN` が付与されていること（`docker-compose.yml`）
+
+### 3. 構成
+
+- `wan-client`（WAN側クライアント）: `172.31.0.3`
+- `router`（転送装置）: `wan=172.31.0.1`, `lan=192.168.10.1`
+- `lan-web`（LAN側Webサーバ）: `192.168.10.4:80`
+
+### 4. lan-web の戻り経路を router に向ける
+
+`lan-web` シェルで実行します。
+
+```bash
+docker compose exec lan-web sh
+ip route
+ip route del default
+ip route add default via 192.168.10.1
+ip route
+```
+
+判定ポイント
+
+- `default via 192.168.10.1` になっていること
+- これを設定しないと、DNAT後の戻り通信が `router` を通らず失敗することがあります
+
+### 5. DNATなしの状態で疎通確認
+
+`wan-client` で実行します。
+
+```bash
+docker compose exec wan-client sh
+curl -m 15 http://172.31.0.1:8080
+```
+
+DNATルールが無い状態では、接続失敗（タイムアウトや接続エラー）することを確認します。
+
+### 6. DNATルール追加（router）
+
+`router` シェルで実行します。まず重複を防ぐため、現在のDNATルール本数を確認します。
+
+```bash
+iptables -t nat -L PREROUTING -n --line-numbers
+```
+
+`dpt:8080 to:192.168.10.4:80` が:
+- 0本: 次の追加コマンドを実行
+- 1本: 追加済みなので追加コマンドはスキップ
+- 2本以上: 重複を削除して1本にしてから進む
+
+重複削除（推奨: 行番号指定）:
+
+```bash
+iptables -t nat -D PREROUTING <line_number>
+```
+
+重複削除（代替: ルール指定。1回で1本削除）:
+
+```bash
+iptables -t nat -D PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 192.168.10.4:80
+```
+
+1本に整ったら、DNATを追加します。
+
+```bash
+iptables -t nat -A PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 192.168.10.4:80
+```
+
+追加後（またはスキップ後）に、最終確認を行います。
+
+```bash
+iptables -t nat -L PREROUTING -n --line-numbers
+```
+
+### 7. 再度 wan-client からアクセス
+
+```bash
+curl -m 15 http://172.31.0.1:8080
+```
+
+`<title>Welcome to nginx!</title>` など、`lan-web` の応答が返ることを確認します。
+
+### 8. conntrack を確認
+
+`router` シェルで実行します。
+
+```bash
+conntrack -L
+```
+
+観察ポイント（表示形式は環境差あり）:
+- `dst=172.31.0.1 dport=8080`（router WAN 側へ来た通信）
+- `reply_dst=192.168.10.4` または `dst=192.168.10.4 dport=80` 系（LAN側Webへ転送）
+
+### 9. Step5 の成功判定
+
+- DNAT なしでは `wan-client -> router:8080` が失敗する
+- DNAT 追加後に `router:8080 -> lan-web:80` へ転送される
+- `conntrack` に DNAT フロー（外側8080と内側80の対応）が観察できる
+- `curl` が `timeout` する場合、まず DNAT 重複（8080ルール複数本）を解消すると改善することがある
+
+### 10. なぜそうなるか
+
+- `PREROUTING` の DNAT は、受信した宛先IP/portを書き換えて内部宛へ転送します。
+- `conntrack` は DNAT の変換前/変換後対応を保持し、戻り通信も整合させます。
+- `lan-web` のデフォルトルートが `192.168.10.1`（router）を向いていないと、戻り通信が別経路へ出て失敗します。
+
+### 11. 注意
+
+- 出力の形式や件数は環境で変わるため、値の一致ではなく構造で判定してください。
+- Step5を複数回実施すると `-A` でDNATルールが重複しやすいため、追加前に本数確認を推奨します。
+- ルール削除で戻す場合は次を実行します。
+
+```bash
+iptables -t nat -D PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 192.168.10.4:80
+```

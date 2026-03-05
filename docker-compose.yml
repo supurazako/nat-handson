@@ -41,6 +41,23 @@ services:
       wan:
         ipv4_address: 172.31.0.2
 
+  wan-client:
+    image: alpine:3.20
+    container_name: nat-wan-client
+    command: ["sh", "-c", "sleep infinity"]
+    networks:
+      wan:
+        ipv4_address: 172.31.0.3
+
+  lan-web:
+    image: nginx:alpine
+    container_name: nat-lan-web
+    cap_add:
+      - NET_ADMIN
+    networks:
+      lan:
+        ipv4_address: 192.168.10.4
+
 networks:
   lan:
     driver: bridge
