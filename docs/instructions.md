@@ -641,13 +641,13 @@ iptables -t nat -A POSTROUTING -s 192.168.10.0/24 -o <WAN_IF> -j MASQUERADE
 `client1`:
 
 ```bash
-curl -s http://172.31.0.2
+curl http://172.31.0.2
 ```
 
 `client2`:
 
 ```bash
-curl -s http://172.31.0.2
+curl http://172.31.0.2
 ```
 
 ### 8. ルール復旧（通常形に戻す）
