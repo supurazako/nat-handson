@@ -605,16 +605,18 @@ iptables -D FORWARD -i <WAN_IF> -o <LAN_IF> -m conntrack --ctstate ESTABLISHED,R
 
 ### 6. 疎通失敗確認
 
+15秒でタイムアウトするように `curl` のオプションを付けて、疎通失敗を確認します。
+
 `client1`:
 
 ```bash
-curl http://172.31.0.2
+curl -m 15 http://172.31.0.2
 ```
 
 `client2`:
 
 ```bash
-curl http://172.31.0.2
+curl -m 15 http://172.31.0.2
 ```
 
 失敗（タイムアウトや接続エラー）することを確認します。
