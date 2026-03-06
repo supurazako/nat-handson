@@ -1,0 +1,60 @@
+services:
+  client:
+    image: alpine:3.20
+    container_name: nat-adv-client
+    command:
+      - sh
+      - -c
+      - ip route del default && ip route add default via 192.168.20.1 && sleep infinity
+    cap_add:
+      - NET_ADMIN
+    networks:
+      lan:
+        ipv4_address: 192.168.20.2
+
+  naptd:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nat-adv-naptd
+    command:
+      - --lan-if=eth0
+      - --wan-if=eth1
+      - --lan-cidr=192.168.20.0/24
+      - --tun-name=tun0
+      - --wan-ip=172.31.10.1
+      - --port-range=40000-49999
+      - --log-level=info
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    networks:
+      lan:
+        ipv4_address: 192.168.20.1
+      wan:
+        ipv4_address: 172.31.10.1
+
+  server:
+    image: nginx:alpine
+    container_name: nat-adv-server
+    networks:
+      wan:
+        ipv4_address: 172.31.10.2
+
+networks:
+  lan:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.20.0/24
+          gateway: 192.168.20.254
+  wan:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.10.0/24
+          gateway: 172.31.10.254

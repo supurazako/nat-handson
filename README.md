@@ -16,6 +16,7 @@ NAPTのしくみを学ぶ
 - conntrackによる状態管理の観察
 - 複数クライアント通信の検証
 - DNATによるポートフォワーディング
+- 自作NAPT（上級トラック / Go）
 
 ## 前提環境
 
@@ -39,6 +40,9 @@ docker compose up -d
 - docker-compose.yml
 - docs/instructions.md
 - docs/troubleshoot.md
+- advanced/self-napt-go
+- docs/advanced-self-napt.md
+- docs/advanced-self-napt-troubleshoot.md
 
 ## ハンズオン構成
 
@@ -47,6 +51,16 @@ docker compose up -d
 - Step3: 状態破壊
 - Step4: ルール削除（発展）
 - Step5: DNAT（発展）
+
+## 上級トラック（自作NAPT）
+
+「設定して観察」ではなく、NAPTの変換テーブルとロジックを自作したい場合は上級トラックを利用します。
+
+- 手順: [docs/advanced-self-napt.md](docs/advanced-self-napt.md)
+- トラブルシュート: [docs/advanced-self-napt-troubleshoot.md](docs/advanced-self-napt-troubleshoot.md)
+- ワークショップ本体: `advanced/self-napt-go/workshop`
+- 答え合わせ: `advanced/self-napt-go/solutions`
+- 進行方式: stepごとにTODOを実装して `go test` を緑化
 
 ## ゴール
 
