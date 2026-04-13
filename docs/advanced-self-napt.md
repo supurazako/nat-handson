@@ -75,10 +75,10 @@ docker compose -f docker-compose.self.yml logs -f naptd
 確認コマンド:
 
 ```bash
-docker compose exec client sh -c "apk add --no-cache curl >/dev/null 2>&1 || true; curl http://172.31.10.2"
-docker compose exec naptd conntrack -L
-docker compose exec naptd iptables -t nat -L -n -v
-docker compose exec naptd iptables -L -n -v
+docker compose -f docker-compose.self.yml exec client sh -c "apk add --no-cache curl >/dev/null 2>&1 || true; curl http://172.31.10.2"
+docker compose -f docker-compose.self.yml exec naptd conntrack -L
+docker compose -f docker-compose.self.yml exec naptd iptables -t nat -L -n -v
+docker compose -f docker-compose.self.yml exec naptd iptables -L -n -v
 ```
 
 ## 7. 現在のスコープ

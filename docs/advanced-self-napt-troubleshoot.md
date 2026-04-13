@@ -51,9 +51,9 @@ docker compose -f docker-compose.self.yml logs -f naptd
 確認:
 
 ```bash
-docker compose exec naptd conntrack -L
-docker compose exec naptd iptables -t nat -L -n -v
-docker compose exec naptd iptables -L -n -v
+docker compose -f docker-compose.self.yml exec naptd conntrack -L
+docker compose -f docker-compose.self.yml exec naptd iptables -t nat -L -n -v
+docker compose -f docker-compose.self.yml exec naptd iptables -L -n -v
 ```
 
 観点:
